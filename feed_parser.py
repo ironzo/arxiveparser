@@ -1,7 +1,6 @@
 import feedparser
 from settings import base_url
 import urllib, urllib.request
-
 def found_results(generated_search_query, time_range):
     url = f'{base_url}{generated_search_query}+AND+submittedDate:{time_range}'
     data = urllib.request.urlopen(url)

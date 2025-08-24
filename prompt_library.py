@@ -24,6 +24,6 @@ cs.AI — Artificial Intelligence
 cs.IR — Information Retrieval
 cs.LG — Machine Learning
 ✅ Example Output Format (STRUCTURED):
-search_query=(all:%22retrieval+augmented+generation%22+OR+all:%22semantic+search%22)+AND+(cat:cs.CL+OR+cat:cs.IR+OR+cat:cs.AI)
+(all:%22retrieval+augmented+generation%22+OR+all:%22semantic+search%22)+AND+(cat:cs.CL+OR+cat:cs.IR+OR+cat:cs.AI)
 Do not add any explanation — only return the raw search_query= string.
 """
