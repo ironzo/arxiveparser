@@ -1,5 +1,5 @@
 - Add fallbacks for LLM query generaion
 - Add possibility to provide a query by human?
-- Add function which sequentially fetches text from each paperwork
++ Add function which sequentially fetches text from each paperwork
 - Add LLM summarization
 - Think about making Knoweledge Graphs

@@ -1,0 +1,49 @@
+Search query: (all:"retrieval+augmented+generation"+OR+all:"semantic+search")+(cat:cs.CL+OR+cat:cs.IR+OR+cat:cs.AI)+(ti:%22Agents%22+OR+ti:%22Tools%22)
+Traceback (most recent call last):
+  File "/Users/iryna/Desktop/code/different_code/arxive/parser/main.py", line 42, in <module>
+    results = found_results(search_query, time_range)
+  File "/Users/iryna/Desktop/code/different_code/arxive/parser/feed_parser.py", line 6, in found_results
+    data = urllib.request.urlopen(url)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 216, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 525, in open
+    response = meth(req, response)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 634, in http_response
+    response = self.parent.error(
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 563, in error
+    return self._call_chain(*args)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 496, in _call_chain
+    result = func(*args)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 643, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 400: Bad Request
+
+
+Search query: (all: "retrieval augmented generation agents tools" OR all: "semantic search") +AND+ (cat: cs.CL OR cat: cs.IR OR cat: cs.AI)
+Traceback (most recent call last):
+  File "/Users/iryna/Desktop/code/different_code/arxive/parser/main.py", line 42, in <module>
+    results = found_results(search_query, time_range)
+  File "/Users/iryna/Desktop/code/different_code/arxive/parser/feed_parser.py", line 6, in found_results
+    data = urllib.request.urlopen(url)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 216, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 519, in open
+    response = self._open(req, data)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 536, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 496, in _call_chain
+    result = func(*args)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 1391, in https_open
+    return self.do_open(http.client.HTTPSConnection, req,
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/urllib/request.py", line 1348, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/http/client.py", line 1283, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/http/client.py", line 1294, in _send_request
+    self.putrequest(method, url, **skips)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/http/client.py", line 1128, in putrequest
+    self._validate_path(url)
+  File "/Users/iryna/.pyenv/versions/3.10.13/lib/python3.10/http/client.py", line 1228, in _validate_path
+    raise InvalidURL(f"URL can't contain control characters. {url!r} "
+http.client.InvalidURL: URL can't contain control characters. '/api/query?search_query=(all: "retrieval augmented generation agents tools" OR all: "semantic search") +AND+ (cat: cs.CL OR cat: cs.IR OR cat: cs.AI)+AND+submittedDate:[202508010000+TO+202508020000]' (found at least ' ')
+

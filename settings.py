@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 
 # Select model
-#model = 'gemini-2.0-flash-001'
-model = "llama3.1:latest"
+#model_name = 'gemini-2.0-flash-001'
+model_name = "llama3.1:latest"
 
 # ArXive base URL
 base_url = 'https://export.arxiv.org/api/query?search_query='

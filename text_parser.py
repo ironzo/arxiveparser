@@ -17,8 +17,8 @@ def get_abstract(soup):
 def get_sections(soup):
     return soup.find_all("h2", class_="ltx_title ltx_title_section")
 
-def parse_main_text(all_h2, paper_text):
-
+def parse_main_text(all_h2):
+    paper_text = {}
     def base_case(tag):
         if not tag: return ""
         text = html.unescape(tag.get_text(" ", strip=True))
@@ -71,12 +71,46 @@ def paper_json(result):
     soup = get_soup(result)
     abstract = get_abstract(soup)
     sections = get_sections(soup)
-    paper_text = {
-                    "id":result["id"],
-                    "title":result["title"],
-                    "authors":result["authors"],
-                    "Abstract":abstract
+    main_text = parse_main_text(sections)
+    if main_text:
+        return {
+                "id":result["id"],
+                "title":result["title"],
+                "authors":result["authors"],
+                "Abstract":abstract,
+                "Main":main_text
                 }
-    return parse_main_text(sections, paper_text)
-
+    else:
+        return {
+                "id":result["id"],
+                "title":result["title"],
+                "authors":result["authors"],
+                "Abstract":result["summary"],
+                "Main":""
+                }
     
+def extract_tuples(data, parent_key=None):
+    result = []
+
+    def dfs(node, current_key):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                new_key = f"{current_key}. {k}" if current_key else k
+                dfs(v, new_key)
+        elif isinstance(node, list):
+            for item in node:
+                dfs(item, current_key)
+        elif isinstance(node, str):
+            result.append([current_key, node])
+
+    dfs(data, parent_key)
+    return result
+
+def enhance_json(result):
+    res = result["Main"]
+    if res:
+        res_tuple = extract_tuples(res)
+    else:
+        res_tuple = [["Summary", result["Abstract"]]]
+    result["Tuples"] = res_tuple
+    return result
