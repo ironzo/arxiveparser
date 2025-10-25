@@ -1,58 +1,88 @@
 from prompt_library import summaries, general_paper_summary
+import asyncio
+from langchain_ollama import ChatOllama
 
-def make_summary(llm, elements):
+async def make_summary(llm, elements):
     """
-    Input - elements (list element with [0] - title, [1] - text; llm 
-    Output - LLM-generated summaries
+        Input - elements -> TUPLES (list element with [0] - title, [1] - text; llm 
+        Output - LLM-generated summaries for 1 paragraph
     """
+    print(f"Making summary for {elements[0]}")
     user_prompt = f"""
-    Given the paragraph title and paragraph text. 
-    Return the consise summary of paragraph text.
+        Given the paragraph title and paragraph text. 
+        Return the consise summary of paragraph text.
 
-    # Paragpraph Title:
-    {elements[0]}
+        # Paragpraph Title:
+        {elements[0]}
 
-    # Paragraph Text:
-    {elements[1]}
+        # Paragraph Text:
+        {elements[1]}
 
-    Return the summary of the paragraph text only.
-    """
+        Return the summary of the paragraph text only.
+        """
     messages = [("system", summaries), ("human", user_prompt)]
     try:
-        res = llm.invoke(messages)
+        # Use ainvoke for async LLM calls
+        res = await llm.ainvoke(messages)
         summary = res.content
     except:
         summary = elements[1]
     return summary
 
-def make_summary_all_paper(llm, paper_dict):
+async def process_paper_paragraphs_parallel(llm, paper):
     """
-    Input - dictionary wiht parsed paper info, including summaries.
-    Output - summary of the entire paper
+    Process all paragraphs of a paper in parallel.
     """
-    paper_title = paper_dict["title"]
-    abstract = paper_dict["Abstract"]
-    section_summaries = ""
-    for i in range(len(paper_dict["Tuples"])):
-        if len(paper_dict["Tuples"][i])>=3:
-            section_summaries +=f"Paragraph Title:\n{paper_dict['Tuples'][i][0]}\n\nParagraph Summary:\n{paper_dict['Tuples'][i][2]}\n\n\n"
-    user_prompt = f"""
-    Please create a comprehensive summary of the following research paper:
+    paper_tuples = paper["Tuples"]
+    if not paper_tuples:
+        print(f"No tuples found in paper: {paper['title']}")
+        return []
 
-    **Paper Title:** {paper_title}
+    # Process all paragraphs in parallel
+    tasks = []
+    for tuple_data in paper_tuples:
+        task = make_summary(llm, tuple_data)
+        tasks.append(task)
+    
+    summaries = await asyncio.gather(*tasks)
+    
+    # Return the summaries as tuples (title, text, summary)
+    result_tuples = []
+    for i, summary in enumerate(summaries):
+        result_tuples.append([paper_tuples[i][0], paper_tuples[i][1], summary])
+    
+    return result_tuples
 
-    **Abstract:** {abstract}
-
-    **Section Summaries:**
-    {section_summaries}
-
-    Generate a detailed summary following the structure and guidelines provided in the system prompt.
+async def create_general_summary(llm, paper):
     """
-    messages = [("system", general_paper_summary), ("human", user_prompt)]
+    Create a comprehensive general summary of the paper using section summaries.
+    """
+    print(f"Creating general summary for: {paper['title'][:50]}...")
+    
+    # Get section summaries
+    section_summaries = paper.get("section_summaries", [])
+    if not section_summaries:
+        print(f"No section summaries found for paper: {paper['title']}")
+        return ""
+    
+    # Build the prompt with paper information
+    general_summary_prompt = f"""
+        Paper Title: {paper['title']}
+        Abstract: {paper.get('Abstract', 'No abstract available')}
+        
+        Section Summaries:
+    """
+    
+    # Add each section summary
+    for section in section_summaries:
+        if len(section) >= 3:  # [title, text, summary]
+            general_summary_prompt += f"\n\n**{section[0]}:**\n{section[2]}"
+    
+    messages = [("system", general_paper_summary), ("human", general_summary_prompt)]
+    
     try:
-        res = llm.invoke(messages)
-        summary = res.content
-    except:
-        summary = abstract
-    return summary
-
+        res = await llm.ainvoke(messages)
+        return res.content
+    except Exception as e:
+        print(f"Error creating general summary for {paper['title']}: {e}")
+        return ""

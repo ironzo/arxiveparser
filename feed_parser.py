@@ -12,11 +12,13 @@ def found_results(generated_search_query, time_range):
         summary = entry.summary
         arxiv_id = entry.id.split('/')[-1]  # extract just the ID part
         authors = [author.name for author in entry.authors]
+        paper_url = entry.id  # This is the full arXiv URL
 
         results.append({
             "id": arxiv_id,
             "title": title,
             "summary": summary,
-            "authors": authors
+            "authors": authors,
+            "url": paper_url
         })
     return results

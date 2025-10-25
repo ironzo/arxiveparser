@@ -1,4 +1,6 @@
 import requests, re, html
+import aiohttp
+import asyncio
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from settings import parser_url_base
@@ -29,41 +31,33 @@ def parse_main_text(all_h2):
     def find_sibling(tag):
         return tag.find_next_sibling()
 
-    def dfs(node):
-        if node is None:
-            return []
-        acc, cur = [], node
-        while cur:
-            # compute hdr for THIS cur; only look at direct children
-            hdr = cur.find(
-                lambda t: isinstance(t, Tag) and any("title" in c for c in (t.get("class") or [])),
-                recursive=False
-            )
-            label = base_case(hdr) if hdr else base_case(cur)
+    def find_siblings(tag):
+        siblings = []
+        current = find_sibling(tag)
+        while current:
+            if current.name == "h2":
+                break
+            siblings.append(current)
+            current = find_sibling(current)
+        return siblings
 
-            # your existing child-pick logic (keep as-is)
-            first_child = next(
-                (c for c in cur.children
-                 if isinstance(c, Tag) and (
-                     'ltx_section' in (c.get('class') or []) or
-                     'ltx_para'    in (c.get('class') or []) or
-                     c.name == 'p'
-                 )), None
-            )
-
-            if hdr and first_child:
-                acc.append({label: dfs(first_child)})
-            else:
-                acc.append(label)
-
-            cur = find_sibling(cur)
-        return acc
+    def process_section(h2_tag):
+        section_title = base_case(h2_tag)
+        siblings = find_siblings(h2_tag)
+        section_content = []
+        
+        for sibling in siblings:
+            if sibling.name in ["p", "div", "ul", "ol", "li"]:
+                content = base_case(sibling)
+                if content:
+                    section_content.append(content)
+        
+        return section_title, " ".join(section_content)
 
     for h2 in all_h2:
-        if isinstance(h2, Tag):
-            key = base_case(h2)
-            first = find_sibling(h2)
-            paper_text[key] = dfs(first)
+        title, content = process_section(h2)
+        if title and content:
+            paper_text[title] = content
 
     return paper_text
 
@@ -114,3 +108,70 @@ def enhance_json(result):
         res_tuple = [["Summary", result["Abstract"]]]
     result["Tuples"] = res_tuple
     return result
+
+async def get_soup_async(session, result):
+    """Async version of get_soup using aiohttp"""
+    id = result["id"]
+    url = parser_url_base + id
+    
+    async with session.get(url) as response:
+        html_content = await response.text()
+        return BeautifulSoup(html_content, "html.parser")
+
+async def parse_paper_async(session, paper):
+    """Parse a single paper asynchronously"""
+    print(f"Parsing paper: {paper['title'][:50]}...")
+    
+    try:
+        # Get soup asynchronously
+        soup = await get_soup_async(session, paper)
+        
+        # Run CPU-intensive tasks in thread pool
+        loop = asyncio.get_event_loop()
+        
+        # These are CPU-bound, so use thread pool
+        abstract = await loop.run_in_executor(None, get_abstract, soup)
+        sections = await loop.run_in_executor(None, get_sections, soup)
+        main_text = await loop.run_in_executor(None, parse_main_text, sections)
+        
+        # Build result
+        # Construct arXiv URL from ID
+        arxiv_url = f"https://arxiv.org/abs/{paper['id']}"
+        
+        if main_text:
+            parsed_paper = {
+                "id": paper["id"],
+                "title": paper["title"],
+                "authors": paper["authors"],
+                "url": arxiv_url,
+                "Abstract": abstract,
+                "Main": main_text
+            }
+        else:
+            parsed_paper = {
+                "id": paper["id"],
+                "title": paper["title"],
+                "authors": paper["authors"],
+                "url": arxiv_url,
+                "Abstract": paper.get("summary", ""),
+                "Main": ""
+            }
+        
+        # Enhance with tuples
+        enhanced_paper = await loop.run_in_executor(None, enhance_json, parsed_paper)
+        
+        return enhanced_paper
+        
+    except Exception as e:
+        print(f"Error parsing paper {paper['title']}: {e}")
+        # Return a minimal paper structure on error
+        arxiv_url = f"https://arxiv.org/abs/{paper['id']}"
+        return {
+            "id": paper["id"],
+            "title": paper["title"],
+            "authors": paper["authors"],
+            "url": arxiv_url,
+            "Abstract": paper.get("summary", ""),
+            "Main": "",
+            "Tuples": [["Summary", paper.get("summary", "")]]
+        }
