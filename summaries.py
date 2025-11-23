@@ -1,6 +1,5 @@
 from prompt_library import summaries, general_paper_summary
 import asyncio
-from langchain_ollama import ChatOllama
 
 async def make_summary(llm, elements):
     """
@@ -25,8 +24,9 @@ async def make_summary(llm, elements):
         # Use ainvoke for async LLM calls
         res = await llm.ainvoke(messages)
         summary = res.content
-    except:
-        summary = elements[1]
+    except Exception as e:
+        print(f"Warning: Error generating summary for {elements[0]}: {e}")
+        summary = elements[1]  # Use original text as fallback
     return summary
 
 async def process_paper_paragraphs_parallel(llm, paper):

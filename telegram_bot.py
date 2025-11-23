@@ -3,6 +3,7 @@ import re
 import asyncio
 import logging
 import threading
+import fcntl
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update
@@ -27,6 +28,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_USER_ID_STR = os.getenv("ADMIN_USER_ID", "")
+ADMIN_USER_ID = None
+
+if ADMIN_USER_ID_STR:
+    try:
+        ADMIN_USER_ID = int(ADMIN_USER_ID_STR.strip())
+        logger.info(f"Admin user ID set: {ADMIN_USER_ID}")
+    except ValueError:
+        logger.error("Error parsing ADMIN_USER_ID. Please ensure it is an integer.")
+        ADMIN_USER_ID = None
+
 ALLOWED_USER_IDS_STR = os.getenv("ALLOWED_USER_IDS", "")
 ALLOWED_USER_IDS = set()
 
@@ -46,6 +58,8 @@ if not ALLOWED_USER_IDS:
 WAITING_FOR_TOPIC = 1
 WAITING_FOR_FROM_DATE = 2
 WAITING_FOR_TO_DATE = 3
+WAITING_FOR_USER_ID_TO_ADD = 4
+WAITING_FOR_USER_ID_TO_REMOVE = 5
 
 # Store user data temporarily
 user_sessions = {}
@@ -58,6 +72,74 @@ def is_user_authorized(user_id: int) -> bool:
         return True
     
     return user_id in ALLOWED_USER_IDS
+
+
+def is_admin(user_id: int) -> bool:
+    """Check if user is the admin"""
+    return ADMIN_USER_ID is not None and user_id == ADMIN_USER_ID
+
+
+def get_env_file_path() -> str:
+    """Get the path to the .env file"""
+    # Assuming .env is in the parent directory of the parser folder
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
+    return os.path.join(parent_dir, '.env')
+
+
+def update_env_file(user_ids_set: set) -> bool:
+    """Update the ALLOWED_USER_IDS in the .env file with file locking to prevent race conditions"""
+    try:
+        env_path = get_env_file_path()
+        
+        # Convert set to comma-separated string
+        user_ids_str = ','.join(str(uid) for uid in sorted(user_ids_set))
+        
+        # Use file locking to prevent concurrent writes
+        with open(env_path, 'r+') as f:
+            # Acquire exclusive lock (blocks until available)
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            
+            try:
+                # Read existing content
+                f.seek(0)
+                env_lines = f.readlines()
+                
+                # Update existing ALLOWED_USER_IDS line
+                found_allowed_users = False
+                for i, line in enumerate(env_lines):
+                    if line.strip().startswith('ALLOWED_USER_IDS='):
+                        env_lines[i] = f'ALLOWED_USER_IDS={user_ids_str}\n'
+                        found_allowed_users = True
+                        break
+                
+                # If ALLOWED_USER_IDS not found, append it
+                if not found_allowed_users:
+                    if env_lines and not env_lines[-1].endswith('\n'):
+                        env_lines.append('\n')
+                    env_lines.append(f'ALLOWED_USER_IDS={user_ids_str}\n')
+                
+                # Write back to file
+                f.seek(0)
+                f.truncate()
+                f.writelines(env_lines)
+                f.flush()
+                os.fsync(f.fileno())  # Ensure written to disk
+                
+            finally:
+                # Release lock
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        
+        # Update the global variable
+        global ALLOWED_USER_IDS
+        ALLOWED_USER_IDS = user_ids_set.copy()
+        
+        logger.info(f"Updated .env file with {len(user_ids_set)} user IDs")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating .env file: {e}")
+        return False
 
 
 def validate_date_format(date_str: str) -> bool:
@@ -317,13 +399,25 @@ def help_command(update: Update, context: CallbackContext):
         )
         return
     
-    update.message.reply_text(
+    help_text = (
         "🤖 *arXiv Research Assistant Help*\n\n"
         "*Commands:*\n"
         "/start - Begin a new research search\n"
         "/cancel - Cancel current search setup\n"
-        "/help - Show this help message\n\n"
-        "*How it works:*\n"
+        "/help - Show this help message\n"
+    )
+    
+    # Add admin commands if user is admin
+    if is_admin(user_id):
+        help_text += (
+            "\n*Admin Commands:*\n"
+            "/add_user - Add a new authorized user\n"
+            "/remove_user - Remove an authorized user\n"
+            "/list_users - List all authorized users\n"
+        )
+    
+    help_text += (
+        "\n*How it works:*\n"
         "1. Send /start\n"
         "2. Enter your research topic (e.g., 'RAG', 'Transformers')\n"
         "3. Enter START date in format: `YYYY.MM.DD`\n"
@@ -333,7 +427,204 @@ def help_command(update: Update, context: CallbackContext):
         "- `2025.08.01` (August 1, 2025)\n"
         "- `2024.10.24` (October 24, 2024)\n\n"
         "The bot will search arXiv, parse papers, generate summaries, "
-        "and send you a comprehensive research digest.",
+        "and send you a comprehensive research digest."
+    )
+    
+    update.message.reply_text(help_text, parse_mode="Markdown")
+
+
+def add_user_command(update: Update, context: CallbackContext) -> int:
+    """Admin command to add a new user"""
+    user_id = update.effective_user.id
+    
+    # Check if user is admin
+    if not is_admin(user_id):
+        update.message.reply_text(
+            "🚫 *Access Denied*\n\n"
+            "This command is only available to administrators.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
+    update.message.reply_text(
+        "👤 *Add New User*\n\n"
+        "Please enter the Telegram User ID you want to authorize.\n\n"
+        "💡 *Tip:* Users can find their ID by sending any message to @userinfobot\n\n"
+        "Enter the user ID (numbers only):",
+        parse_mode="Markdown"
+    )
+    
+    return WAITING_FOR_USER_ID_TO_ADD
+
+
+def receive_user_id_to_add(update: Update, context: CallbackContext) -> int:
+    """Receive and process the user ID to add"""
+    user_id = update.effective_user.id
+    new_user_id_str = update.message.text.strip()
+    
+    # Validate that it's a number
+    try:
+        new_user_id = int(new_user_id_str)
+    except ValueError:
+        update.message.reply_text(
+            "❌ *Invalid User ID*\n\n"
+            "User ID must be a number.\n\n"
+            "Please try again or send /cancel to abort:",
+            parse_mode="Markdown"
+        )
+        return WAITING_FOR_USER_ID_TO_ADD
+    
+    # Check if user is already authorized
+    if new_user_id in ALLOWED_USER_IDS:
+        update.message.reply_text(
+            f"ℹ️ *User Already Authorized*\n\n"
+            f"User ID `{new_user_id}` is already in the authorized users list.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
+    # Add user to the set
+    updated_users = ALLOWED_USER_IDS.copy()
+    updated_users.add(new_user_id)
+    
+    # Update .env file
+    if update_env_file(updated_users):
+        update.message.reply_text(
+            f"✅ *User Added Successfully*\n\n"
+            f"User ID `{new_user_id}` has been authorized.\n\n"
+            f"Total authorized users: {len(updated_users)}",
+            parse_mode="Markdown"
+        )
+        logger.info(f"Admin {user_id} added user {new_user_id}")
+    else:
+        update.message.reply_text(
+            "❌ *Error*\n\n"
+            "Failed to update the .env file. Please check the logs.",
+            parse_mode="Markdown"
+        )
+    
+    return ConversationHandler.END
+
+
+def remove_user_command(update: Update, context: CallbackContext) -> int:
+    """Admin command to remove a user"""
+    user_id = update.effective_user.id
+    
+    # Check if user is admin
+    if not is_admin(user_id):
+        update.message.reply_text(
+            "🚫 *Access Denied*\n\n"
+            "This command is only available to administrators.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
+    if not ALLOWED_USER_IDS:
+        update.message.reply_text(
+            "ℹ️ *No Users to Remove*\n\n"
+            "There are currently no authorized users in the system.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
+    users_list = '\n'.join([f"• `{uid}`" for uid in sorted(ALLOWED_USER_IDS)])
+    
+    update.message.reply_text(
+        f"👤 *Remove User*\n\n"
+        f"Current authorized users:\n{users_list}\n\n"
+        f"Please enter the User ID you want to remove:",
+        parse_mode="Markdown"
+    )
+    
+    return WAITING_FOR_USER_ID_TO_REMOVE
+
+
+def receive_user_id_to_remove(update: Update, context: CallbackContext) -> int:
+    """Receive and process the user ID to remove"""
+    user_id = update.effective_user.id
+    remove_user_id_str = update.message.text.strip()
+    
+    # Validate that it's a number
+    try:
+        remove_user_id = int(remove_user_id_str)
+    except ValueError:
+        update.message.reply_text(
+            "❌ *Invalid User ID*\n\n"
+            "User ID must be a number.\n\n"
+            "Please try again or send /cancel to abort:",
+            parse_mode="Markdown"
+        )
+        return WAITING_FOR_USER_ID_TO_REMOVE
+    
+    # Check if user exists in the authorized list
+    if remove_user_id not in ALLOWED_USER_IDS:
+        update.message.reply_text(
+            f"❌ *User Not Found*\n\n"
+            f"User ID `{remove_user_id}` is not in the authorized users list.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
+    # Prevent admin from removing themselves
+    if remove_user_id == ADMIN_USER_ID:
+        update.message.reply_text(
+            "⚠️ *Cannot Remove Admin*\n\n"
+            "You cannot remove the admin user from the authorized list.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
+    # Remove user from the set
+    updated_users = ALLOWED_USER_IDS.copy()
+    updated_users.discard(remove_user_id)
+    
+    # Update .env file
+    if update_env_file(updated_users):
+        update.message.reply_text(
+            f"✅ *User Removed Successfully*\n\n"
+            f"User ID `{remove_user_id}` has been removed from authorized users.\n\n"
+            f"Total authorized users: {len(updated_users)}",
+            parse_mode="Markdown"
+        )
+        logger.info(f"Admin {user_id} removed user {remove_user_id}")
+    else:
+        update.message.reply_text(
+            "❌ *Error*\n\n"
+            "Failed to update the .env file. Please check the logs.",
+            parse_mode="Markdown"
+        )
+    
+    return ConversationHandler.END
+
+
+def list_users_command(update: Update, context: CallbackContext):
+    """Admin command to list all authorized users"""
+    user_id = update.effective_user.id
+    
+    # Check if user is admin
+    if not is_admin(user_id):
+        update.message.reply_text(
+            "🚫 *Access Denied*\n\n"
+            "This command is only available to administrators.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    if not ALLOWED_USER_IDS:
+        update.message.reply_text(
+            "ℹ️ *No Authorized Users*\n\n"
+            "There are currently no authorized users in the system.\n"
+            "The bot is accessible to everyone.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    users_list = '\n'.join([f"{i+1}. `{uid}`" for i, uid in enumerate(sorted(ALLOWED_USER_IDS))])
+    
+    update.message.reply_text(
+        f"👥 *Authorized Users List*\n\n"
+        f"Total: {len(ALLOWED_USER_IDS)} user(s)\n\n"
+        f"{users_list}",
         parse_mode="Markdown"
     )
 
@@ -346,6 +637,11 @@ def main():
     
     # Display authorization info
     print("🔐 Authorization Configuration:")
+    if ADMIN_USER_ID:
+        print(f"   👑 Admin user ID: {ADMIN_USER_ID}")
+    else:
+        print("   ⚠️  WARNING: No admin user set (admin commands disabled)")
+    
     if ALLOWED_USER_IDS:
         print(f"   ✅ Bot restricted to {len(ALLOWED_USER_IDS)} authorized user(s)")
         print(f"   Allowed user IDs: {sorted(ALLOWED_USER_IDS)}")
@@ -359,7 +655,7 @@ def main():
     # Get the dispatcher to register handlers
     dispatcher = updater.dispatcher
     
-    # Create conversation handler
+    # Create conversation handler for main research flow
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -379,9 +675,38 @@ def main():
         per_chat=True,
     )
     
+    # Create conversation handler for adding users (admin only)
+    add_user_handler = ConversationHandler(
+        entry_points=[CommandHandler("add_user", add_user_command)],
+        states={
+            WAITING_FOR_USER_ID_TO_ADD: [
+                MessageHandler(Filters.text & ~Filters.command, receive_user_id_to_add)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_user=True,
+        per_chat=True,
+    )
+    
+    # Create conversation handler for removing users (admin only)
+    remove_user_handler = ConversationHandler(
+        entry_points=[CommandHandler("remove_user", remove_user_command)],
+        states={
+            WAITING_FOR_USER_ID_TO_REMOVE: [
+                MessageHandler(Filters.text & ~Filters.command, receive_user_id_to_remove)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_user=True,
+        per_chat=True,
+    )
+    
     # Add handlers
     dispatcher.add_handler(conv_handler)
+    dispatcher.add_handler(add_user_handler)
+    dispatcher.add_handler(remove_user_handler)
     dispatcher.add_handler(CommandHandler("help", help_command))
+    dispatcher.add_handler(CommandHandler("list_users", list_users_command))
     
     # Start the bot
     print("🤖 Bot is starting...")

@@ -1,19 +1,15 @@
-import requests, re, html
+import re
+import html
 import aiohttp
 import asyncio
 from bs4 import BeautifulSoup
-from bs4.element import Tag
 from settings import parser_url_base
-
-def get_soup(result):
-    id = result["id"]
-    url_html = requests.get(parser_url_base+id).text
-    return BeautifulSoup(url_html, "html.parser")
 
 def get_abstract(soup):
     try:
         return soup.find('div', class_='ltx_abstract').get_text(" ", strip=True)
-    except:
+    except Exception as e:
+        print(f"Warning: Could not extract abstract: {e}")
         return ""
 
 def get_sections(soup):
@@ -61,28 +57,6 @@ def parse_main_text(all_h2):
 
     return paper_text
 
-def paper_json(result):
-    soup = get_soup(result)
-    abstract = get_abstract(soup)
-    sections = get_sections(soup)
-    main_text = parse_main_text(sections)
-    if main_text:
-        return {
-                "id":result["id"],
-                "title":result["title"],
-                "authors":result["authors"],
-                "Abstract":abstract,
-                "Main":main_text
-                }
-    else:
-        return {
-                "id":result["id"],
-                "title":result["title"],
-                "authors":result["authors"],
-                "Abstract":result["summary"],
-                "Main":""
-                }
-    
 def extract_tuples(data, parent_key=None):
     result = []
 

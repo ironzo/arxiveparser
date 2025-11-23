@@ -1,4 +1,3 @@
-from prompt_library import *
 from settings import model_name
 
 def invoke(client, model, prompt, prefix, config):

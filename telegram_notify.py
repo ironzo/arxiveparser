@@ -1,4 +1,5 @@
-import os, requests
+import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,7 +15,7 @@ def tg_notify(text: str, chat_id: str = None) -> None:
     try:
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            timeout=5,
+            timeout=10,  # Increased timeout for reliability
             data={"chat_id": target_chat_id, "text": text, "parse_mode": "Markdown"},
         )
     except Exception as exc:
@@ -65,7 +66,7 @@ def tg_notify_multiple(text: str, max_length: int = 4000, chat_id: str = None) -
         try:
             requests.post(
                 f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                timeout=5,
+                timeout=10,  # Increased timeout for reliability
                 data={"chat_id": target_chat_id, "text": chunk, "parse_mode": "Markdown"},
             )
             print(f"Sent message part {i+1}/{len(chunks)}")
