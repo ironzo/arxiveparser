@@ -6,7 +6,7 @@ import urllib.parse
 import aiohttp
 import logging
 from dotenv import load_dotenv
-from google import genai
+import google.generativeai as genai
 from llm import invoke
 from settings import model_name, structured_query_config, Query
 from prompt_library import query_construction, make_digest
