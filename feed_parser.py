@@ -7,7 +7,10 @@ from settings import base_url
 _last_arxiv_request = 0
 _ARXIV_RATE_LIMIT = 3.0  # seconds
 
-def found_results(generated_search_query, time_range):
+# ArXiv API limits (max 2000 results per query, but can paginate)
+MAX_RESULTS_PER_REQUEST = 100  # Reasonable default, can be adjusted
+
+def found_results(generated_search_query, time_range, max_results=MAX_RESULTS_PER_REQUEST):
     global _last_arxiv_request
     
     # Rate limiting: wait if needed
@@ -17,7 +20,9 @@ def found_results(generated_search_query, time_range):
         print(f"Rate limiting: waiting {sleep_time:.2f}s before arXiv request")
         time.sleep(sleep_time)
     
-    url = f'{base_url}{generated_search_query}+AND+submittedDate:{time_range}'
+    # Add max_results parameter to get more than default 10 results
+    url = f'{base_url}{generated_search_query}+AND+submittedDate:{time_range}&max_results={max_results}'
+    
     # Add timeout to prevent hanging
     data = urllib.request.urlopen(url, timeout=30)
     _last_arxiv_request = time.time()  # Update last request time

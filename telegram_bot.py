@@ -629,6 +629,23 @@ def list_users_command(update: Update, context: CallbackContext):
     )
 
 
+def error_handler(update: Update, context: CallbackContext):
+    """Handle errors caused by Updates"""
+    logger.error(f"Update {update} caused error {context.error}")
+    
+    # Log the full traceback for debugging
+    import traceback
+    logger.error(''.join(traceback.format_exception(None, context.error, context.error.__traceback__)))
+    
+    # Try to notify the user if possible
+    try:
+        if update and update.effective_message:
+            update.effective_message.reply_text(
+                "⚠️ An error occurred. The bot is still running. Please try again."
+            )
+    except Exception as e:
+        logger.error(f"Could not send error message to user: {e}")
+
 def main():
     """Start the bot"""
     if not TELEGRAM_TOKEN:
@@ -649,11 +666,30 @@ def main():
         print("   ⚠️  WARNING: Bot is OPEN to all users (no restrictions)")
         print("   To restrict access, set ALLOWED_USER_IDS in .env file")
     
-    # Create the Updater and pass it your bot's token
-    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
+    # Create the Updater with custom request settings for better reliability
+    from telegram.utils.request import Request
+    
+    # Configure request with shorter timeouts and retry logic
+    request = Request(
+        connect_timeout=10.0,  # Connection timeout
+        read_timeout=10.0,      # Read timeout (shorter for faster failure detection)
+        con_pool_size=8         # Connection pool size
+    )
+    
+    updater = Updater(
+        token=TELEGRAM_TOKEN, 
+        use_context=True,
+        request_kwargs={
+            'connect_timeout': 10.0,
+            'read_timeout': 10.0
+        }
+    )
     
     # Get the dispatcher to register handlers
     dispatcher = updater.dispatcher
+    
+    # Register error handler - CRITICAL for handling network issues
+    dispatcher.add_error_handler(error_handler)
     
     # Create conversation handler for main research flow
     conv_handler = ConversationHandler(
@@ -708,12 +744,17 @@ def main():
     dispatcher.add_handler(CommandHandler("help", help_command))
     dispatcher.add_handler(CommandHandler("list_users", list_users_command))
     
-    # Start the bot
+    # Start the bot with polling parameters
     print("🤖 Bot is starting...")
     print("👉 Send /start to your bot to begin!")
     
-    # Run the bot until you press Ctrl-C
-    updater.start_polling()
+    # Run the bot with auto-retry on network errors
+    updater.start_polling(
+        poll_interval=1.0,           # Poll every 1 second
+        timeout=10,                  # Timeout for long polling
+        drop_pending_updates=False,  # Don't drop pending updates
+        allowed_updates=Update.ALL_TYPES
+    )
     
     # Run the bot until the user presses Ctrl-C or the process receives SIGINT, SIGTERM or SIGABRT
     updater.idle()
