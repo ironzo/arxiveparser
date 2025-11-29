@@ -90,9 +90,15 @@ class DatabaseManager:
         try:
             self.engine = create_engine(
                 self.database_url,
-                pool_size=5,
-                max_overflow=10,
+                pool_size=10,  # Increased pool size
+                max_overflow=20,  # More overflow connections
                 pool_pre_ping=True,  # Verify connections before using
+                pool_recycle=3600,  # Recycle connections after 1 hour
+                pool_timeout=120,  # Wait up to 2 minutes for a connection
+                connect_args={
+                    'connect_timeout': 60,  # 60 seconds to establish connection
+                    'options': '-c statement_timeout=14400000'  # 4 hour query timeout (in ms)
+                },
                 echo=False  # Set to True for SQL debugging
             )
             self.SessionLocal = sessionmaker(bind=self.engine)

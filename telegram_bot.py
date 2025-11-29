@@ -669,19 +669,19 @@ def main():
     # Create the Updater with custom request settings for better reliability
     from telegram.utils.request import Request
     
-    # Configure request with shorter timeouts and retry logic
+    # Configure request with very long timeouts for LLM processing (can take up to 4 hours)
     request = Request(
-        connect_timeout=10.0,  # Connection timeout
-        read_timeout=10.0,      # Read timeout (shorter for faster failure detection)
-        con_pool_size=8         # Connection pool size
+        connect_timeout=60.0,    # 1 minute to establish connection
+        read_timeout=14400.0,    # 4 hours read timeout for long LLM operations
+        con_pool_size=8          # Connection pool size
     )
     
     updater = Updater(
         token=TELEGRAM_TOKEN, 
         use_context=True,
         request_kwargs={
-            'connect_timeout': 10.0,
-            'read_timeout': 10.0
+            'connect_timeout': 60.0,
+            'read_timeout': 14400.0
         }
     )
     
@@ -750,8 +750,8 @@ def main():
     
     # Run the bot with auto-retry on network errors
     updater.start_polling(
-        poll_interval=1.0,           # Poll every 1 second
-        timeout=10,                  # Timeout for long polling
+        poll_interval=3.0,           # Poll every 3 seconds (less aggressive)
+        timeout=14400,               # 4 hour timeout for long polling (LLM can take long)
         drop_pending_updates=False,  # Don't drop pending updates
         allowed_updates=Update.ALL_TYPES
     )
