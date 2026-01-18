@@ -1,6 +1,7 @@
 # arXiv Research Assistant Bot 🤖
 
 An interactive Telegram bot that searches arXiv for research papers, generates summaries, and delivers comprehensive research digests directly to your Telegram.
+This project is a research automation tool designed to streamline the discovery and analysis of academic literature. By interfacing with the arXiv API, the parser automates the retrieval of metadata and PDFs, transforming unstructured search results into a structured dataset for downstream NLP tasks, literature reviews, or trend analysis.
 
 ## Features ✨
 
